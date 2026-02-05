@@ -1,42 +1,125 @@
 <template>
-  <div class="min-h-screen flex items-center justify-center p-4">
-    <div class="bg-white rounded-lg shadow-lg p-8 w-full max-w-md">
-      <h1 class="text-2xl font-bold text-center mb-6">登录</h1>
-      <form @submit.prevent="handleLogin">
-        <div class="mb-4">
-          <label class="block text-gray-700 mb-2">用户名</label>
-          <input v-model="form.username" type="text" class="w-full border rounded px-3 py-2" required />
-        </div>
-        <div class="mb-6">
-          <label class="block text-gray-700 mb-2">密码</label>
-          <input v-model="form.password" type="password" class="w-full border rounded px-3 py-2" required />
-        </div>
-        <button type="submit" class="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700">
-          登录
-        </button>
-      </form>
-      <p class="mt-4 text-center">
-        <router-link to="/register" class="text-blue-600">没有账号？去注册</router-link>
-      </p>
-    </div>
+  <div class="login-page">
+    <el-card class="login-card">
+      <template #header>
+        <h2>登录 PocketLedger</h2>
+      </template>
+      
+      <el-form
+        ref="formRef"
+        :model="form"
+        :rules="rules"
+        label-position="top"
+      >
+        <el-form-item label="用户名" prop="username">
+          <el-input
+            v-model="form.username"
+            placeholder="请输入用户名"
+            prefix-icon="User"
+          />
+        </el-form-item>
+        
+        <el-form-item label="密码" prop="password">
+          <el-input
+            v-model="form.password"
+            type="password"
+            placeholder="请输入密码"
+            prefix-icon="Lock"
+            show-password
+            @keyup.enter="handleSubmit"
+          />
+        </el-form-item>
+        
+        <el-form-item>
+          <el-button
+            type="primary"
+            :loading="loading"
+            @click="handleSubmit"
+            class="submit-btn"
+          >
+            登录
+          </el-button>
+        </el-form-item>
+      </el-form>
+      
+      <div class="footer">
+        <span>还没有账号？</span>
+        <el-link type="primary" @click="$router.push('/register')">
+          去注册
+        </el-link>
+      </div>
+    </el-card>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
+import { useAuthStore } from '@/stores/auth'
+import { User, Lock } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 
 const router = useRouter()
-const form = ref({ username: '', password: '' })
+const authStore = useAuthStore()
 
-const handleLogin = async () => {
-  try {
-    const { data } = await axios.post('/api/v1/auth/login', form.value)
-    localStorage.setItem('token', data.access_token)
-    router.push('/')
-  } catch (error) {
-    alert('登录失败')
-  }
+const formRef = ref(null)
+const loading = ref(false)
+
+const form = reactive({
+  username: '',
+  password: ''
+})
+
+const rules = {
+  username: [
+    { required: true, message: '请输入用户名', trigger: 'blur' }
+  ],
+  password: [
+    { required: true, message: '请输入密码', trigger: 'blur' }
+  ]
+}
+
+async function handleSubmit() {
+  if (!formRef.value) return
+  
+  await formRef.value.validate(async (valid) => {
+    if (!valid) return
+    
+    loading.value = true
+    try {
+      await authStore.login(form.username, form.password)
+      ElMessage.success('登录成功')
+      router.push('/')
+    } catch (error) {
+      ElMessage.error(error.response?.data?.detail || '登录失败，请检查用户名和密码')
+    } finally {
+      loading.value = false
+    }
+  })
 }
 </script>
+
+<style scoped>
+.login-page {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.login-card {
+  width: 400px;
+  border-radius: 8px;
+}
+
+.submit-btn {
+  width: 100%;
+}
+
+.footer {
+  text-align: center;
+  margin-top: 16px;
+  color: #666;
+}
+</style>
