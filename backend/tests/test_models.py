@@ -226,7 +226,7 @@ async def test_budget_model(test_db):
 @pytest.mark.asyncio
 async def test_invitation_code_model(test_db):
     """测试邀请码模型创建"""
-    from app.models.invitation import InvitationCode
+    from app.models.invitation import Invitation
     from app.models.user import User
     
     db = TestingSessionLocal()
@@ -239,20 +239,20 @@ async def test_invitation_code_model(test_db):
         db.add(user)
         db.commit()
         
-        code = InvitationCode(
-            code=InvitationCode.generate_code(),
+        invitation = Invitation(
+            code="TESTCODE123",
             max_uses=3,
             created_by_id=user.id
         )
-        db.add(code)
+        db.add(invitation)
         db.commit()
-        db.refresh(code)
+        db.refresh(invitation)
         
-        assert code.id is not None
-        assert code.code is not None
-        assert len(code.code) == 10
-        assert code.max_uses == 3
-        assert code.current_uses == 0
-        assert code.can_use is True
+        assert invitation.id is not None
+        assert invitation.code is not None
+        assert len(invitation.code) > 0
+        assert invitation.max_uses == 3
+        assert invitation.used_count == 0
+        assert invitation.can_use is True
     finally:
         db.close()

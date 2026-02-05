@@ -6,7 +6,7 @@ from datetime import timedelta
 from app.config import settings
 from app.database import get_db
 from app.models.user import User
-from app.models.invitation import InvitationCode
+from app.models.invitation import Invitation
 from app.auth.jwt import create_access_token, get_current_user
 from app.auth.password import verify_password
 from app.schemas.auth import Token, LoginRequest, RegisterRequest, MessageResponse
@@ -33,9 +33,9 @@ async def register(request: RegisterRequest, db: Session = Depends(get_db)):
         )
     
     # 验证邀请码
-    invitation = db.query(InvitationCode).filter(
-        InvitationCode.code == request.invitation_code,
-        InvitationCode.is_active == True
+    invitation = db.query(Invitation).filter(
+        Invitation.code == request.invitation_code,
+        Invitation.is_active == True
     ).first()
     
     if not invitation:
@@ -44,7 +44,11 @@ async def register(request: RegisterRequest, db: Session = Depends(get_db)):
             detail="邀请码无效"
         )
     
-    if invitation.is_expired:
+    # 检查是否过期
+    from datetime import datetime
+    import pytz
+    shanghai_tz = pytz.timezone("Asia/Shanghai")
+    if invitation.expires_at and datetime.now(shanghai_tz) > invitation.expires_at:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="邀请码已过期"

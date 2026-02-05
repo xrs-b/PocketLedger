@@ -25,7 +25,7 @@ class User(Base):
     records = relationship("Record", back_populates="user", cascade="all, delete-orphan")
     projects = relationship("Project", back_populates="owner", cascade="all, delete-orphan")
     budgets = relationship("Budget", back_populates="user", cascade="all, delete-orphan")
-    invitation_codes = relationship("InvitationCode", back_populates="created_by", cascade="all, delete-orphan")
+    invitations = relationship("Invitation", back_populates="created_by", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<User {self.username}>"

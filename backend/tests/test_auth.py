@@ -6,7 +6,7 @@ from sqlalchemy.pool import StaticPool
 from app.database import Base, get_db
 from app.main import app
 from app.models.user import User
-from app.models.invitation import InvitationCode
+from app.models.invitation import Invitation
 from app.auth.password import get_password_hash
 
 # 测试数据库
@@ -53,7 +53,7 @@ def test_invitation(db_session):
     db_session.add(creator)
     db_session.commit()
     
-    invitation = InvitationCode(
+    invitation = Invitation(
         code="TEST1234",
         max_uses=3,
         created_by_id=creator.id
