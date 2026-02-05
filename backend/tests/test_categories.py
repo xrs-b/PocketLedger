@@ -1,213 +1,348 @@
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from app.database import Base
-from app.models.category import Category, CategoryType
-from datetime import datetime
-import pytz
+from sqlalchemy.pool import StaticPool
+from app.database import Base, get_db
+from app.main import app
+from app.models.user import User
+from app.models.category import Category, CategoryType, CategoryLevel
+from app.auth.password import get_password_hash
 
-shanghai_tz = pytz.timezone("Asia/Shanghai")
-
-
-# 创建内存数据库进行测试
+# 测试数据库
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
-
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
+test_engine = create_engine(
+    SQLALCHEMY_DATABASE_URL,
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
 )
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-
-def setup_database():
-    """创建所有表"""
-    Base.metadata.create_all(bind=engine)
-
-
-def teardown_database():
-    """清理所有表"""
-    Base.metadata.drop_all(bind=engine)
+TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
 
 
 @pytest.fixture(scope="function")
 def db_session():
-    """提供数据库会话"""
-    setup_database()
+    """创建测试数据库会话"""
+    Base.metadata.create_all(bind=test_engine)
     session = TestingSessionLocal()
     yield session
     session.close()
-    teardown_database()
+    Base.metadata.drop_all(bind=test_engine)
+
+
+@pytest.fixture(scope="function")
+def client(db_session):
+    """创建测试客户端"""
+    def override_get_db():
+        yield db_session
+    
+    app.dependency_overrides[get_db] = override_get_db
+    with TestClient(app) as test_client:
+        yield test_client
+    app.dependency_overrides.clear()
 
 
 @pytest.fixture
-def sample_category(db_session):
-    """提供示例分类"""
-    category = Category(
+def test_user(db_session):
+    """创建测试用户"""
+    user = User(
+        username="testuser",
+        email="test@example.com",
+        hashed_password=get_password_hash("testpassword")
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    return user
+
+
+@pytest.fixture
+def auth_headers(test_user, client):
+    """获取认证请求头"""
+    login_resp = client.post(
+        "/api/v1/auth/login",
+        data={
+            "username": "testuser",
+            "password": "testpassword"
+        }
+    )
+    token = login_resp.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def sample_categories(db_session, test_user):
+    """创建示例分类"""
+    # 一级分类
+    parent1 = Category(
         name="餐饮",
         type=CategoryType.EXPENSE,
+        level=CategoryLevel.PRIMARY,
         is_system=True,
         icon="food",
         sort_order=1,
+        user_id=test_user.id
     )
-    db_session.add(category)
-    db_session.commit()
-    db_session.refresh(category)
-    return category
-
-
-@pytest.fixture
-def nested_categories(db_session):
-    """提供嵌套分类（一级和二级）"""
-    # 一级分类
-    parent = Category(
-        name="支出",
-        type=CategoryType.EXPENSE,
+    parent2 = Category(
+        name="工资",
+        type=CategoryType.INCOME,
+        level=CategoryLevel.PRIMARY,
         is_system=True,
-        sort_order=0,
+        icon="salary",
+        sort_order=1,
+        user_id=test_user.id
     )
-    db_session.add(parent)
+    db_session.add_all([parent1, parent2])
     db_session.commit()
     
     # 二级分类
-    child = Category(
-        name="餐饮",
+    child1 = Category(
+        name="早餐",
         type=CategoryType.EXPENSE,
-        parent_id=parent.id,
+        level=CategoryLevel.SECONDARY,
+        parent_id=parent1.id,
         is_system=True,
-        icon="food",
+        icon="breakfast",
         sort_order=1,
+        user_id=test_user.id
     )
-    db_session.add(child)
+    child2 = Category(
+        name="午餐",
+        type=CategoryType.EXPENSE,
+        level=CategoryLevel.SECONDARY,
+        parent_id=parent1.id,
+        is_system=True,
+        icon="lunch",
+        sort_order=2,
+        user_id=test_user.id
+    )
+    db_session.add_all([child1, child2])
     db_session.commit()
-    db_session.refresh(child)
     
-    return parent, child
+    return parent1, parent2, child1, child2
 
 
-class TestCategoryModel:
-    """Category 模型测试类"""
-    
-    def test_create_category(self, db_session):
-        """测试创建基本分类"""
-        category = Category(
-            name="工资",
-            type=CategoryType.INCOME,
-            is_system=True,
+class TestPrimaryCategories:
+    """一级分类测试类"""
+
+    def test_get_categories_success(self, client, auth_headers, sample_categories):
+        """测试获取一级分类列表"""
+        response = client.get("/api/v1/categories", headers=auth_headers)
+        assert response.status_code == 200
+        data = response.json()
+        assert "categories" in data
+        assert len(data["categories"]) == 2
+
+    def test_get_categories_without_token(self, client):
+        """测试无令牌获取分类"""
+        response = client.get("/api/v1/categories")
+        assert response.status_code == 401
+
+    def test_create_category_success(self, client, auth_headers, db_session):
+        """测试创建一级分类"""
+        response = client.post(
+            "/api/v1/categories",
+            headers=auth_headers,
+            json={
+                "name": "购物",
+                "type": "expense",
+                "icon": "shopping",
+                "color": "#FF0000"
+            }
         )
-        db_session.add(category)
-        db_session.commit()
-        
-        assert category.id is not None
-        assert category.name == "工资"
-        assert category.type == CategoryType.INCOME
-        assert category.is_system is True
-        assert category.parent_id is None
-        assert category.sort_order == 0
-        assert category.created_at is not None
-        assert category.icon is None
-    
-    def test_category_with_icon(self, db_session):
-        """测试带图标的分类"""
-        category = Category(
-            name="交通",
-            type=CategoryType.EXPENSE,
-            icon="transport",
+        assert response.status_code == 201
+        data = response.json()
+        assert data["name"] == "购物"
+        assert data["type"] == "expense"
+        assert data["level"] == "primary"
+        assert data["icon"] == "shopping"
+        assert data["color"] == "#FF0000"
+
+    def test_create_category_duplicate_name(self, client, auth_headers, sample_categories):
+        """测试创建重复名称的分类"""
+        response = client.post(
+            "/api/v1/categories",
+            headers=auth_headers,
+            json={
+                "name": "餐饮",
+                "type": "expense"
+            }
         )
-        db_session.add(category)
-        db_session.commit()
-        
-        assert category.icon == "transport"
-    
-    def test_category_with_parent(self, nested_categories):
-        """测试带父分类的二级分类"""
-        parent, child = nested_categories
-        
-        assert parent.id is not None
-        assert child.parent_id == parent.id
-        assert child.id != parent.id
-    
-    def test_parent_child_relationship(self, nested_categories):
-        """测试父子关系"""
-        parent, child = nested_categories
-        
-        # 检查反向关系（使用 children）
-        assert len(parent.children) >= 1
-        assert child in parent.children
-    
-    def test_category_type_enum(self, db_session):
-        """测试分类类型"""
-        income_category = Category(name="工资", type=CategoryType.INCOME)
-        expense_category = Category(name="餐饮", type=CategoryType.EXPENSE)
-        
-        db_session.add_all([income_category, expense_category])
-        db_session.commit()
-        
-        assert income_category.type == CategoryType.INCOME
-        assert expense_category.type == CategoryType.EXPENSE
-    
-    def test_sort_order_default(self, db_session):
-        """测试排序默认值"""
-        category = Category(name="测试分类", type=CategoryType.EXPENSE)
-        db_session.add(category)
-        db_session.commit()
-        
-        assert category.sort_order == 0
-    
-    def test_system_default_false(self, db_session):
-        """测试系统预设默认值"""
-        category = Category(name="自定义分类", type=CategoryType.INCOME)
-        db_session.add(category)
-        db_session.commit()
-        
-        assert category.is_system is False
-    
-    def test_category_repr(self, sample_category):
-        """测试 __repr__ 方法"""
-        repr_str = repr(sample_category)
-        assert "Category" in repr_str
-        assert "餐饮" in repr_str
-    
-    def test_multiple_categories(self, db_session):
-        """测试多个分类"""
-        categories = [
-            Category(name="工资", type=CategoryType.INCOME, is_system=True),
-            Category(name="奖金", type=CategoryType.INCOME, is_system=True),
-            Category(name="餐饮", type=CategoryType.EXPENSE, is_system=True),
-            Category(name="交通", type=CategoryType.EXPENSE, is_system=True),
-        ]
-        
-        for cat in categories:
-            db_session.add(cat)
-        db_session.commit()
-        
-        # 验证所有分类都已创建
-        all_categories = db_session.query(Category).all()
-        assert len(all_categories) == 4
-    
-    def test_category_type_value(self, db_session):
-        """测试分类类型的实际值"""
-        category = Category(
-            name="测试",
-            type=CategoryType.EXPENSE,
+        assert response.status_code == 400
+
+    def test_update_category_success(self, client, auth_headers, sample_categories, db_session):
+        """测试更新分类"""
+        parent1 = sample_categories[0]
+        response = client.put(
+            f"/api/v1/categories/{parent1.id}",
+            headers=auth_headers,
+            json={
+                "name": "餐饮更新",
+                "icon": "food-updated"
+            }
         )
-        db_session.add(category)
-        db_session.commit()
-        
-        # 验证存储的值
-        assert category.type.value == "expense"
-    
-    def test_created_at_is_datetime(self, db_session):
-        """测试 created_at 是 datetime 类型"""
-        category = Category(name="测试", type=CategoryType.EXPENSE)
-        db_session.add(category)
-        db_session.commit()
-        
-        assert isinstance(category.created_at, datetime)
-    
-    def test_self_referential_parent(self, nested_categories):
-        """测试自引用父分类"""
-        parent, child = nested_categories
-        
-        # 确保父分类的 parent_id 是 None
-        assert parent.parent_id is None
-        # 确保子分类的 parent_id 指向父分类
-        assert child.parent_id == parent.id
+        assert response.status_code == 200
+        data = response.json()
+        assert data["name"] == "餐饮更新"
+        assert data["icon"] == "food-updated"
+
+    def test_update_category_not_found(self, client, auth_headers):
+        """测试更新不存在的分类"""
+        response = client.put(
+            "/api/v1/categories/9999",
+            headers=auth_headers,
+            json={"name": "测试"}
+        )
+        assert response.status_code == 404
+
+    def test_delete_category_success(self, client, auth_headers, sample_categories, db_session):
+        """测试删除分类"""
+        parent1 = sample_categories[0]
+        response = client.delete(
+            f"/api/v1/categories/{parent1.id}",
+            headers=auth_headers
+        )
+        assert response.status_code == 200
+        assert response.json()["message"] == "分类删除成功"
+
+        # 验证分类已被软删除 (is_active=False)
+        category = db_session.query(Category).filter(Category.id == parent1.id).first()
+        assert category is not None
+        assert category.is_active is False
+
+    def test_delete_category_not_found(self, client, auth_headers):
+        """测试删除不存在的分类"""
+        response = client.delete(
+            "/api/v1/categories/9999",
+            headers=auth_headers
+        )
+        assert response.status_code == 404
+
+    def test_delete_category_with_children(self, client, auth_headers, sample_categories, db_session):
+        """测试删除带二级分类的分类"""
+        parent1 = sample_categories[0]
+        response = client.delete(
+            f"/api/v1/categories/{parent1.id}",
+            headers=auth_headers
+        )
+        # 根据实现策略，可能返回 400 或成功删除
+        assert response.status_code in [200, 400]
+
+
+class TestSecondaryCategories:
+    """二级分类测试类"""
+
+    def test_get_items_by_parent(self, client, auth_headers, sample_categories):
+        """测试按父分类获取二级分类"""
+        parent1 = sample_categories[0]
+        response = client.get(
+            f"/api/v1/categories/items?parent_id={parent1.id}",
+            headers=auth_headers
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert "categories" in data
+        assert len(data["categories"]) == 2
+        for cat in data["categories"]:
+            assert cat["parent_id"] == parent1.id
+
+    def test_get_items_no_parent(self, client, auth_headers):
+        """测试未指定父分类时获取二级分类"""
+        response = client.get("/api/v1/categories/items", headers=auth_headers)
+        assert response.status_code == 200
+        data = response.json()
+        assert "categories" in data
+
+    def test_create_secondary_category_success(self, client, auth_headers, sample_categories, db_session):
+        """测试创建二级分类"""
+        parent1 = sample_categories[0]
+        response = client.post(
+            "/api/v1/categories/items",
+            headers=auth_headers,
+            json={
+                "name": "晚餐",
+                "type": "expense",
+                "parent_id": parent1.id,
+                "icon": "dinner",
+                "color": "#00FF00"
+            }
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["name"] == "晚餐"
+        assert data["parent_id"] == parent1.id
+        assert data["level"] == "secondary"
+
+    def test_create_secondary_category_no_parent(self, client, auth_headers):
+        """测试创建二级分类时未指定父分类"""
+        response = client.post(
+            "/api/v1/categories/items",
+            headers=auth_headers,
+            json={
+                "name": "晚餐",
+                "type": "expense",
+                "icon": "dinner"
+            }
+        )
+        assert response.status_code == 400
+
+    def test_create_secondary_category_invalid_parent(self, client, auth_headers):
+        """测试创建二级分类时指定不存在的父分类"""
+        response = client.post(
+            "/api/v1/categories/items",
+            headers=auth_headers,
+            json={
+                "name": "晚餐",
+                "type": "expense",
+                "parent_id": 9999,
+                "icon": "dinner"
+            }
+        )
+        assert response.status_code == 404
+
+
+class TestPresetCategories:
+    """预设分类测试类"""
+
+    def test_get_presets_success(self, client, auth_headers, sample_categories):
+        """测试获取预设分类"""
+        response = client.get("/api/v1/categories/presets", headers=auth_headers)
+        assert response.status_code == 200
+        data = response.json()
+        assert "categories" in data
+        # 预设分类应该都是系统分类
+        for cat in data["categories"]:
+            assert cat["is_system"] is True
+
+    def test_get_presets_without_token(self, client):
+        """测试无令牌获取预设分类"""
+        response = client.get("/api/v1/categories/presets")
+        assert response.status_code == 401
+
+
+class TestCategoryEdgeCases:
+    """边界情况测试类"""
+
+    def test_create_category_empty_name(self, client, auth_headers):
+        """测试创建空名称分类"""
+        response = client.post(
+            "/api/v1/categories",
+            headers=auth_headers,
+            json={
+                "name": "",
+                "type": "expense"
+            }
+        )
+        assert response.status_code == 422  # Validation error
+
+    def test_create_category_long_name(self, client, auth_headers):
+        """测试创建名称过长的分类"""
+        response = client.post(
+            "/api/v1/categories",
+            headers=auth_headers,
+            json={
+                "name": "a" * 100,
+                "type": "expense"
+            }
+        )
+        # 应该返回 422 (validation) 或 400 (business logic)
+        assert response.status_code in [400, 422]
