@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List, Any
 
 
 class ProjectResponse(BaseModel):
@@ -14,6 +14,7 @@ class ProjectResponse(BaseModel):
     created_by_id: int
     created_at: datetime
     updated_at: Optional[datetime] = None
+    records: Optional[List[Any]] = []
 
     class Config:
         from_attributes = True
@@ -44,6 +45,9 @@ class ProjectUpdate(BaseModel):
 
 class ProjectListResponse(BaseModel):
     projects: list[ProjectResponse]
+    total: int
+    page: int
+    page_size: int
 
     class Config:
         from_attributes = True

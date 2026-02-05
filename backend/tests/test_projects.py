@@ -397,6 +397,14 @@ class TestProjectRouter:
         )
         project_id = create_response.json()["id"]
         
+        # 先创建分类
+        category_response = client.post(
+            "/api/v1/categories",
+            json={"name": "测试分类", "type": "expense", "icon": "test", "color": "#000000"},
+            headers=get_auth_headers(test_user)
+        )
+        category_id = category_response.json()["id"]
+        
         # 创建记录
         for i in range(2):
             client.post(
@@ -406,7 +414,8 @@ class TestProjectRouter:
                     "type": "expense",
                     "description": f"支出{i + 1}",
                     "date": datetime.now().isoformat(),
-                    "project_id": project_id
+                    "project_id": project_id,
+                    "category_id": category_id
                 },
                 headers=get_auth_headers(test_user)
             )
