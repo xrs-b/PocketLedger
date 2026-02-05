@@ -39,6 +39,7 @@ class Category(Base):
     user = relationship("User", back_populates="categories")
     parent = relationship("Category", remote_side=[id], backref="children")
     records = relationship("Record", back_populates="category")
+    budgets = relationship("Budget", back_populates="category", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Category {self.name} ({self.type})>"
