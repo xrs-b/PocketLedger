@@ -8,6 +8,13 @@ from app.schemas.record import (
     RecordListResponse,
     RecordWithCategory,
 )
+from app.schemas.project import (
+    ProjectResponse,
+    ProjectCreate,
+    ProjectUpdate,
+    ProjectListResponse,
+    ProjectStats,
+)
 
 __all__ = [
     "UserCreate",
@@ -26,4 +33,9 @@ __all__ = [
     "RecordUpdate",
     "RecordListResponse",
     "RecordWithCategory",
+    "ProjectResponse",
+    "ProjectCreate",
+    "ProjectUpdate",
+    "ProjectListResponse",
+    "ProjectStats",
 ]
