@@ -1,4 +1,6 @@
 from datetime import datetime, timedelta, timezone
+from typing import Optional
+from dataclasses import dataclass
 from jose import JWTError, jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
@@ -7,6 +9,13 @@ from app.config import settings
 from app.database import get_db
 from app.models.user import User
 
+
+@dataclass
+class TokenData:
+    """JWT令牌数据"""
+    user_id: Optional[int] = None
+    username: Optional[str] = None
+
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
 
@@ -14,6 +23,10 @@ oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", aut
 def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
     """创建 JWT 访问令牌"""
     to_encode = data.copy()
+    # 确保 sub 是字符串（JWT 标准要求）
+    if "sub" in to_encode and to_encode["sub"] is not None:
+        to_encode["sub"] = str(to_encode["sub"])
+    
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
     else:

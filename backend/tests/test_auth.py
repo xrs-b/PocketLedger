@@ -1,5 +1,5 @@
-import pytest_asyncio
-from httpx import ASGITransport, AsyncClient
+import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -19,8 +19,8 @@ test_engine = create_engine(
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
 
 
-@pytest_asyncio.fixture(scope="function")
-async def db_session():
+@pytest.fixture(scope="function")
+def db_session():
     """创建测试数据库会话"""
     Base.metadata.create_all(bind=test_engine)
     session = TestingSessionLocal()
@@ -29,27 +29,29 @@ async def db_session():
     Base.metadata.drop_all(bind=test_engine)
 
 
-@pytest_asyncio.fixture(scope="function")
-async def async_client(db_session):
-    """创建异步测试客户端"""
-    app.dependency_overrides[get_db] = lambda: db_session
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        yield client
+@pytest.fixture(scope="function")
+def client(db_session):
+    """创建测试客户端"""
+    def override_get_db():
+        yield db_session
+    
+    app.dependency_overrides[get_db] = override_get_db
+    with TestClient(app) as test_client:
+        yield test_client
     app.dependency_overrides.clear()
 
 
-@pytest.mark.asyncio
-async def test_register_success(async_client, db_session):
-    """测试注册成功"""
-    # 先创建邀请码
+@pytest.fixture
+def test_invitation(db_session):
+    """创建测试邀请码"""
+    # 先创建用户
     creator = User(
         username="creator",
         email="creator@example.com",
         hashed_password=get_password_hash("password")
     )
     db_session.add(creator)
-    await db_session.commit()
+    db_session.commit()
     
     invitation = InvitationCode(
         code="TEST1234",
@@ -57,9 +59,14 @@ async def test_register_success(async_client, db_session):
         created_by_id=creator.id
     )
     db_session.add(invitation)
-    await db_session.commit()
-    
-    response = await async_client.post(
+    db_session.commit()
+    db_session.refresh(invitation)
+    return invitation
+
+
+def test_register_success(client, test_invitation):
+    """测试注册成功"""
+    response = client.post(
         "/api/v1/auth/register",
         json={
             "username": "newuser",
@@ -72,10 +79,9 @@ async def test_register_success(async_client, db_session):
     assert response.json()["message"] == "注册成功"
 
 
-@pytest.mark.asyncio
-async def test_register_invalid_invitation_code(async_client):
+def test_register_invalid_invitation_code(client):
     """测试无效邀请码"""
-    response = await async_client.post(
+    response = client.post(
         "/api/v1/auth/register",
         json={
             "username": "newuser",
@@ -88,8 +94,7 @@ async def test_register_invalid_invitation_code(async_client):
     assert "邀请码" in response.json()["detail"]
 
 
-@pytest.mark.asyncio
-async def test_login_success(async_client, db_session):
+def test_login_success(client, db_session):
     """测试登录成功"""
     user = User(
         username="testuser",
@@ -97,9 +102,9 @@ async def test_login_success(async_client, db_session):
         hashed_password=get_password_hash("testpassword")
     )
     db_session.add(user)
-    await db_session.commit()
+    db_session.commit()
     
-    response = await async_client.post(
+    response = client.post(
         "/api/v1/auth/login",
         data={
             "username": "testuser",
@@ -111,8 +116,7 @@ async def test_login_success(async_client, db_session):
     assert response.json()["token_type"] == "bearer"
 
 
-@pytest.mark.asyncio
-async def test_login_wrong_password(async_client, db_session):
+def test_login_wrong_password(client, db_session):
     """测试密码错误"""
     user = User(
         username="testuser",
@@ -120,9 +124,9 @@ async def test_login_wrong_password(async_client, db_session):
         hashed_password=get_password_hash("testpassword")
     )
     db_session.add(user)
-    await db_session.commit()
+    db_session.commit()
     
-    response = await async_client.post(
+    response = client.post(
         "/api/v1/auth/login",
         data={
             "username": "testuser",
@@ -132,8 +136,7 @@ async def test_login_wrong_password(async_client, db_session):
     assert response.status_code == 401
 
 
-@pytest.mark.asyncio
-async def test_get_current_user(async_client, db_session):
+def test_get_current_user(client, db_session):
     """测试获取当前用户"""
     user = User(
         username="testuser",
@@ -141,10 +144,10 @@ async def test_get_current_user(async_client, db_session):
         hashed_password=get_password_hash("testpassword")
     )
     db_session.add(user)
-    await db_session.commit()
+    db_session.commit()
     
     # 先登录获取 token
-    login_resp = await async_client.post(
+    login_resp = client.post(
         "/api/v1/auth/login",
         data={
             "username": "testuser",
@@ -155,7 +158,7 @@ async def test_get_current_user(async_client, db_session):
     token = login_resp.json()["access_token"]
     
     # 获取当前用户
-    response = await async_client.get(
+    response = client.get(
         "/api/v1/auth/me",
         headers={"Authorization": f"Bearer {token}"}
     )
@@ -163,15 +166,13 @@ async def test_get_current_user(async_client, db_session):
     assert response.json()["username"] == "testuser"
 
 
-@pytest.mark.asyncio
-async def test_get_current_user_without_token(async_client):
+def test_get_current_user_without_token(client):
     """测试无令牌获取用户"""
-    response = await async_client.get("/api/v1/auth/me")
+    response = client.get("/api/v1/auth/me")
     assert response.status_code == 401
 
 
-@pytest.mark.asyncio
-async def test_logout(async_client, db_session):
+def test_logout(client, db_session):
     """测试登出"""
     user = User(
         username="testuser",
@@ -179,10 +180,10 @@ async def test_logout(async_client, db_session):
         hashed_password=get_password_hash("testpassword")
     )
     db_session.add(user)
-    await db_session.commit()
+    db_session.commit()
     
     # 先登录
-    login_resp = await async_client.post(
+    login_resp = client.post(
         "/api/v1/auth/login",
         data={
             "username": "testuser",
@@ -193,7 +194,7 @@ async def test_logout(async_client, db_session):
     token = login_resp.json()["access_token"]
     
     # 登出
-    response = await async_client.post(
+    response = client.post(
         "/api/v1/auth/logout",
         headers={"Authorization": f"Bearer {token}"}
     )

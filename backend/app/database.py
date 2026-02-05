@@ -1,31 +1,28 @@
+import os
 from sqlalchemy import create_engine
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, declarative_base
-from app.config import settings, get_settings
+from sqlalchemy.pool import StaticPool
+from app.config import settings
 
-# 同步引擎（用于非测试环境）
-sync_engine = create_engine(
-    settings.DATABASE_URL,
-    pool_pre_ping=True,
-    pool_recycle=3600
-)
-
-# 异步引擎（用于测试）
-async_engine = create_async_engine(
-    "sqlite+aiosqlite:///:memory:",
-    pool_pre_ping=True,
+# 测试引擎（SQLite 内存）
+test_engine = create_engine(
+    "sqlite:///:memory:",
+    connect_args={"check_same_thread": False},
     poolclass=StaticPool,
 )
 
-AsyncSessionLocal = sessionmaker(
-    bind=async_engine,
-    class_=AsyncSession,
-    expire_on_commit=False,
-    autocommit=False,
-    autoflush=False,
-)
+# 生产引擎（MySQL）
+if os.environ.get("TESTING") != "1":
+    engine = create_engine(
+        settings.DATABASE_URL,
+        pool_pre_ping=True,
+        pool_recycle=3600
+    )
+else:
+    # 测试时使用测试引擎
+    engine = test_engine
 
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=sync_engine)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
 
@@ -38,14 +35,11 @@ def get_db():
         db.close()
 
 
-async def get_async_db():
-    """异步数据库会话"""
-    async with AsyncSessionLocal() as session:
-        try:
-            yield session
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
-        finally:
-            await session.close()
+def init_test_db():
+    """初始化测试数据库"""
+    Base.metadata.create_all(bind=test_engine)
+
+
+def cleanup_test_db():
+    """清理测试数据库"""
+    Base.metadata.drop_all(bind=test_engine)
