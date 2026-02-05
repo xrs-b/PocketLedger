@@ -15,6 +15,13 @@ from app.schemas.project import (
     ProjectListResponse,
     ProjectStats,
 )
+from app.schemas.budget import (
+    BudgetResponse,
+    BudgetCreate,
+    BudgetUpdate,
+    BudgetListResponse,
+    BudgetAlert,
+)
 
 __all__ = [
     "UserCreate",
@@ -38,4 +45,9 @@ __all__ = [
     "ProjectUpdate",
     "ProjectListResponse",
     "ProjectStats",
+    "BudgetResponse",
+    "BudgetCreate",
+    "BudgetUpdate",
+    "BudgetListResponse",
+    "BudgetAlert",
 ]
