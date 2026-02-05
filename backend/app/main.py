@@ -1,6 +1,8 @@
+import os
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import Base, engine, get_db
+from app.routers import auth
 from app import models
 
 app = FastAPI(
@@ -18,10 +20,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Include routers
+app.include_router(auth.router, prefix="/api/v1")
+
 
 # 创建数据库表
 def init_db():
+    # 跳过测试环境的自动创建
+    if os.environ.get("TESTING") == "1":
+        return
     Base.metadata.create_all(bind=engine)
+
+
+@app.on_event("startup")
+async def startup_event():
+    init_db()
 
 
 @app.on_event("startup")
