@@ -23,7 +23,8 @@ class User(Base):
     # 关系
     categories = relationship("Category", back_populates="user", cascade="all, delete-orphan")
     records = relationship("Record", back_populates="user", cascade="all, delete-orphan")
-    projects = relationship("Project", back_populates="owner", cascade="all, delete-orphan")
+    projects = relationship("Project", foreign_keys="Project.owner_id", back_populates="owner", cascade="all, delete-orphan")
+    created_projects = relationship("Project", foreign_keys="Project.created_by_id", back_populates="created_by", cascade="all, delete-orphan")
     budgets = relationship("Budget", back_populates="user", cascade="all, delete-orphan")
     invitations = relationship("Invitation", back_populates="created_by", cascade="all, delete-orphan")
 
