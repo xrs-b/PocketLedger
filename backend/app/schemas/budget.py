@@ -47,6 +47,9 @@ class BudgetUpdate(BaseModel):
 
 class BudgetListResponse(BaseModel):
     budgets: list[BudgetResponse]
+    total: int
+    page: int
+    page_size: int
 
     class Config:
         from_attributes = True

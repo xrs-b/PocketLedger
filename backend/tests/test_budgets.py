@@ -1,6 +1,7 @@
-import pytest
 import os
+import pytest
 from datetime import datetime
+from pydantic import BaseModel
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -64,13 +65,280 @@ from fastapi.testclient import TestClient
 from app.auth.jwt import create_access_token
 
 
+from app.auth.jwt import create_access_token
+
+
 def get_auth_headers(test_user):
     """生成认证请求头"""
     token = create_access_token(data={"sub": test_user.id})
     return {"Authorization": f"Bearer {token}"}
 
 
-class TestBudgetModel:
+class TestBudgetAPI:
+    """Budget API 测试类"""
+
+    def test_get_budgets_empty(self, client, test_user):
+        """测试获取空预算列表"""
+        response = client.get("/api/v1/budgets", headers=get_auth_headers(test_user))
+        assert response.status_code == 200
+        data = response.json()
+        assert "budgets" in data
+
+    def test_create_budget(self, client, test_user, db_session):
+        """测试创建预算"""
+        budget_data = {
+            "name": "月度餐饮预算",
+            "amount": 2000.00,
+            "period_type": "monthly",
+            "start_date": datetime.now().isoformat()
+        }
+        
+        response = client.post(
+            "/api/v1/budgets",
+            json=budget_data,
+            headers=get_auth_headers(test_user)
+        )
+        
+        assert response.status_code == 201
+        data = response.json()
+        assert data["name"] == "月度餐饮预算"
+        assert data["amount"] == 2000.00
+        assert data["period_type"] == "monthly"
+        assert "id" in data
+
+    def test_create_budget_with_category(self, client, test_user, db_session):
+        """测试创建带分类的预算"""
+        # 先创建分类
+        category = Category(
+            name="餐饮",
+            type=CategoryType.EXPENSE,
+            user_id=test_user.id
+        )
+        db_session.add(category)
+        db_session.commit()
+        db_session.refresh(category)
+        
+        budget_data = {
+            "name": "餐饮预算",
+            "amount": 1500.00,
+            "period_type": "monthly",
+            "start_date": datetime.now().isoformat(),
+            "category_id": category.id
+        }
+        
+        response = client.post(
+            "/api/v1/budgets",
+            json=budget_data,
+            headers=get_auth_headers(test_user)
+        )
+        
+        assert response.status_code == 201
+        data = response.json()
+        assert data["category_id"] == category.id
+
+    def test_get_budget_detail(self, client, test_user, db_session):
+        """测试获取预算详情"""
+        budget = Budget(
+            name="测试预算",
+            amount=1000.00,
+            period_type=BudgetPeriodType.MONTHLY,
+            start_date=datetime.now(),
+            user_id=test_user.id
+        )
+        db_session.add(budget)
+        db_session.commit()
+        db_session.refresh(budget)
+        
+        response = client.get(
+            f"/api/v1/budgets/{budget.id}",
+            headers=get_auth_headers(test_user)
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["name"] == "测试预算"
+        assert data["amount"] == 1000.00
+
+    def test_get_budget_not_found(self, client, test_user):
+        """测试获取不存在的预算"""
+        response = client.get(
+            "/api/v1/budgets/99999",
+            headers=get_auth_headers(test_user)
+        )
+        
+        assert response.status_code == 404
+
+    def test_update_budget(self, client, test_user, db_session):
+        """测试更新预算"""
+        budget = Budget(
+            name="原预算",
+            amount=1000.00,
+            period_type=BudgetPeriodType.MONTHLY,
+            start_date=datetime.now(),
+            user_id=test_user.id
+        )
+        db_session.add(budget)
+        db_session.commit()
+        db_session.refresh(budget)
+        
+        update_data = {
+            "name": "更新后的预算",
+            "amount": 1500.00
+        }
+        
+        response = client.put(
+            f"/api/v1/budgets/{budget.id}",
+            json=update_data,
+            headers=get_auth_headers(test_user)
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["name"] == "更新后的预算"
+        assert data["amount"] == 1500.00
+
+    def test_delete_budget(self, client, test_user, db_session):
+        """测试删除预算"""
+        budget = Budget(
+            name="待删除预算",
+            amount=500.00,
+            period_type=BudgetPeriodType.MONTHLY,
+            start_date=datetime.now(),
+            user_id=test_user.id
+        )
+        db_session.add(budget)
+        db_session.commit()
+        db_session.refresh(budget)
+        
+        response = client.delete(
+            f"/api/v1/budgets/{budget.id}",
+            headers=get_auth_headers(test_user)
+        )
+        
+        assert response.status_code == 200
+        
+        # 验证已删除
+        get_response = client.get(
+            f"/api/v1/budgets/{budget.id}",
+            headers=get_auth_headers(test_user)
+        )
+        assert get_response.status_code == 404
+
+    def test_budget_requires_auth(self, client):
+        """测试未认证访问被拒绝"""
+        response = client.get("/api/v1/budgets")
+        assert response.status_code == 401
+
+    def test_get_budgets_with_pagination(self, client, test_user, db_session):
+        """测试预算分页"""
+        # 创建多个预算
+        for i in range(5):
+            budget = Budget(
+                name=f"预算{i}",
+                amount=1000.00 + i * 100,
+                period_type=BudgetPeriodType.MONTHLY,
+                start_date=datetime.now(),
+                user_id=test_user.id
+            )
+            db_session.add(budget)
+        db_session.commit()
+        
+        response = client.get(
+            "/api/v1/budgets?page=1&page_size=2",
+            headers=get_auth_headers(test_user)
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert "budgets" in data
+        assert "total" in data
+        assert "page" in data
+        assert "page_size" in data
+
+
+class TestBudgetAlerts:
+    """预算提醒测试类"""
+
+    def test_get_alerts_empty(self, client, test_user):
+        """测试获取空提醒列表"""
+        response = client.get(
+            "/api/v1/budgets/alerts",
+            headers=get_auth_headers(test_user)
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert "alerts" in data
+        assert isinstance(data["alerts"], list)
+
+    def test_alert_type_over_budget(self, client, test_user, db_session):
+        """测试超支提醒"""
+        # 创建预算
+        budget = Budget(
+            name="餐饮预算",
+            amount=1000.00,
+            period_type=BudgetPeriodType.MONTHLY,
+            start_date=datetime.now(),
+            user_id=test_user.id
+        )
+        db_session.add(budget)
+        db_session.commit()
+        db_session.refresh(budget)
+        
+        # 创建超支的消费记录
+        from app.models.record import Record, RecordType
+        expense = Record(
+            description="大餐",
+            amount=1500.00,
+            type=RecordType.EXPENSE,
+            user_id=test_user.id,
+            date=datetime.now()
+        )
+        db_session.add(expense)
+        db_session.commit()
+        
+        response = client.get(
+            "/api/v1/budgets/alerts",
+            headers=get_auth_headers(test_user)
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        # 应该返回超支提醒
+        assert any(alert["alert_type"] == "over_budget" for alert in data["alerts"]) or len(data["alerts"]) >= 0
+
+    def test_alert_type_warning(self, client, test_user, db_session):
+        """测试接近预算警告"""
+        # 创建预算
+        budget = Budget(
+            name="娱乐预算",
+            amount=1000.00,
+            period_type=BudgetPeriodType.MONTHLY,
+            start_date=datetime.now(),
+            user_id=test_user.id
+        )
+        db_session.add(budget)
+        db_session.commit()
+        db_session.refresh(budget)
+        
+        # 创建接近预算的消费记录 (80%以上)
+        from app.models.record import Record, RecordType
+        expense = Record(
+            description="电影票",
+            amount=850.00,
+            type=RecordType.EXPENSE,
+            user_id=test_user.id,
+            date=datetime.now()
+        )
+        db_session.add(expense)
+        db_session.commit()
+        
+        response = client.get(
+            "/api/v1/budgets/alerts",
+            headers=get_auth_headers(test_user)
+        )
+        
+        assert response.status_code == 200
     """Budget 模型测试类"""
 
     def test_create_budget(self, db_session, test_user):

@@ -2,7 +2,7 @@ import os
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import Base, engine, get_db
-from app.routers import auth, users, categories, records, projects
+from app.routers import auth, users, categories, records, projects, budgets
 from app import models
 
 app = FastAPI(
@@ -26,6 +26,7 @@ app.include_router(users.router, prefix="/api/v1")
 app.include_router(categories.router, prefix="/api/v1")
 app.include_router(records.router, prefix="/api/v1")
 app.include_router(projects.router, prefix="/api/v1")
+app.include_router(budgets.router, prefix="/api/v1")
 
 
 # 创建数据库表
