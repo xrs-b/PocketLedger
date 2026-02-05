@@ -1,50 +1,59 @@
 <template>
   <div class="empty-state">
-    <el-empty :description="description">
+    <el-empty :image="image" :description="description">
       <template v-if="$slots.image">
         <slot name="image" />
       </template>
-      <template v-else>
-        <el-icon class="empty-icon"><icon-name /></el-icon>
+      
+      <template v-if="$slots.default">
+        <slot />
       </template>
-      <template v-if="$slots.actions">
-        <div class="empty-actions">
-          <slot name="actions" />
-        </div>
+      
+      <template v-if="$slots.footer">
+        <slot name="footer" />
       </template>
+      
+      <el-button v-if="showAction" type="primary" @click="$emit('action')">
+        {{ actionText }}
+      </el-button>
     </el-empty>
   </div>
 </template>
 
 <script setup>
-import { defineProps } from 'vue'
-
 defineProps({
+  image: {
+    type: String,
+    default: ''
+  },
   description: {
     type: String,
     default: '暂无数据'
   },
-  iconName: {
-    type: Object,
-    default: null
+  showAction: {
+    type: Boolean,
+    default: false
+  },
+  actionText: {
+    type: String,
+    default: '去添加'
   }
 })
+
+defineEmits(['action'])
 </script>
 
 <style scoped>
 .empty-state {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  padding: 60px 20px;
+  padding: 40px 0;
 }
 
-.empty-icon {
-  font-size: 64px;
-  color: #c0c4cc;
+.empty-state :deep(.el-empty) {
+  padding: 20px 0;
 }
 
-.empty-actions {
-  margin-top: 20px;
+.empty-state :deep(.el-empty__description p) {
+  font-size: 14px;
+  color: #909399;
 }
 </style>
