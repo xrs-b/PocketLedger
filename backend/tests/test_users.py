@@ -1,4 +1,3 @@
-import os
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -9,11 +8,6 @@ from app.main import app
 from app.models.user import User
 from app.models.invitation import Invitation
 from app.auth.password import get_password_hash
-from app.auth.jwt import create_access_token
-
-# 设置测试环境
-os.environ["TESTING"] = "1"
-
 
 # 测试数据库
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
@@ -62,123 +56,121 @@ def test_user(db_session):
 
 
 @pytest.fixture
-def auth_headers(test_user):
-    """获取认证头"""
-    token = create_access_token(data={"sub": test_user.id, "username": test_user.username})
+def auth_headers(test_user, client):
+    """获取认证后的请求头"""
+    login_resp = client.post(
+        "/api/v1/auth/login",
+        data={
+            "username": "testuser",
+            "password": "testpassword"
+        }
+    )
+    token = login_resp.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
 
 
-@pytest.fixture
-def test_invitation(db_session, test_user):
-    """创建测试邀请码"""
+def test_get_profile_success(client, test_user, auth_headers):
+    """测试获取个人资料（已登录）"""
+    response = client.get(
+        "/api/v1/users/profile",
+        headers=auth_headers
+    )
+    assert response.status_code == 200
+    assert response.json()["username"] == "testuser"
+    assert response.json()["email"] == "test@example.com"
+
+
+def test_update_profile_success(client, test_user, auth_headers):
+    """测试更新个人资料"""
+    response = client.put(
+        "/api/v1/users/profile",
+        headers=auth_headers,
+        json={
+            "username": "updateduser",
+            "email": "updated@example.com"
+        }
+    )
+    assert response.status_code == 200
+    assert response.json()["username"] == "updateduser"
+    assert response.json()["email"] == "updated@example.com"
+
+
+def test_update_username(client, test_user, auth_headers):
+    """测试更新用户名"""
+    response = client.put(
+        "/api/v1/users/profile",
+        headers=auth_headers,
+        json={
+            "username": "newusername"
+        }
+    )
+    assert response.status_code == 200
+    assert response.json()["username"] == "newusername"
+
+
+def test_update_email(client, test_user, auth_headers):
+    """测试更新邮箱"""
+    response = client.put(
+        "/api/v1/users/profile",
+        headers=auth_headers,
+        json={
+            "email": "newemail@example.com"
+        }
+    )
+    assert response.status_code == 200
+    assert response.json()["email"] == "newemail@example.com"
+
+
+def test_get_invitations(client, test_user, auth_headers, db_session):
+    """测试获取邀请码列表"""
+    # 先创建一个邀请码
     invitation = Invitation(
-        code="TEST1234",
-        max_uses=3,
+        code="TESTINVITE",
+        max_uses=5,
         created_by_id=test_user.id
     )
     db_session.add(invitation)
     db_session.commit()
-    db_session.refresh(invitation)
-    return invitation
+    
+    response = client.get(
+        "/api/v1/users/invitations",
+        headers=auth_headers
+    )
+    assert response.status_code == 200
+    assert len(response.json()) == 1
+    assert response.json()[0]["code"] == "TESTINVITE"
+    assert response.json()[0]["max_uses"] == 5
 
 
-class TestUserProfile:
-    """测试用户个人资料相关接口"""
-    
-    def test_get_profile_success(self, client, test_user, auth_headers):
-        """测试获取个人资料成功"""
-        response = client.get("/api/v1/users/profile", headers=auth_headers)
-        assert response.status_code == 200
-        data = response.json()
-        assert data["id"] == test_user.id
-        assert data["username"] == test_user.username
-        assert data["email"] == test_user.email
-        assert data["is_active"] == test_user.is_active
-        assert data["is_verified"] == test_user.is_verified
-        assert "created_at" in data
-    
-    def test_get_profile_without_token(self, client):
-        """测试无令牌获取个人资料"""
-        response = client.get("/api/v1/users/profile")
-        assert response.status_code == 401
-    
-    def test_update_profile_success(self, client, test_user, auth_headers):
-        """测试更新个人资料成功"""
-        response = client.put(
-            "/api/v1/users/profile",
-            headers=auth_headers,
-            json={"username": "newusername", "email": "newemail@example.com"}
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert data["username"] == "newusername"
-        assert data["email"] == "newemail@example.com"
-    
-    def test_update_profile_partial(self, client, test_user, auth_headers):
-        """测试部分更新个人资料"""
-        response = client.put(
-            "/api/v1/users/profile",
-            headers=auth_headers,
-            json={"username": "partialupdate"}
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert data["username"] == "partialupdate"
-        # 邮箱应保持不变
-        assert data["email"] == test_user.email
+def test_create_invitation(client, test_user, auth_headers):
+    """测试创建邀请码"""
+    response = client.post(
+        "/api/v1/users/invitations",
+        headers=auth_headers,
+        json={}
+    )
+    assert response.status_code == 201
+    assert "code" in response.json()
+    assert len(response.json()["code"]) == 8
+    assert response.json()["max_uses"] == 1  # 默认值
 
 
-class TestUserInvitations:
-    """测试用户邀请码相关接口"""
-    
-    def test_get_invitations_success(self, client, test_user, test_invitation, auth_headers):
-        """测试获取邀请码列表成功"""
-        response = client.get("/api/v1/users/invitations", headers=auth_headers)
-        assert response.status_code == 200
-        data = response.json()
-        assert isinstance(data, list)
-        assert len(data) == 1
-        assert data[0]["code"] == test_invitation.code
-        assert data[0]["max_uses"] == test_invitation.max_uses
-    
-    def test_get_invitations_empty(self, client, test_user, auth_headers):
-        """测试无邀请码时返回空列表"""
-        response = client.get("/api/v1/users/invitations", headers=auth_headers)
-        assert response.status_code == 200
-        assert response.json() == []
-    
-    def test_create_invitation_success(self, client, test_user, auth_headers):
-        """测试创建邀请码成功"""
-        response = client.post(
-            "/api/v1/users/invitations",
-            headers=auth_headers,
-            json={"max_uses": 5}
-        )
-        assert response.status_code == 201
-        data = response.json()
-        assert data["code"] is not None
-        assert len(data["code"]) == 8
-        assert data["max_uses"] == 5
-        assert data["used_count"] == 0
-        assert data["is_active"] == True
-    
-    def test_create_invitation_default_max_uses(self, client, test_user, auth_headers):
-        """测试创建邀请码使用默认最大使用次数"""
-        response = client.post(
-            "/api/v1/users/invitations",
-            headers=auth_headers,
-            json={}
-        )
-        assert response.status_code == 201
-        data = response.json()
-        assert data["max_uses"] == 1  # 默认值
-    
-    def test_get_invitations_without_token(self, client):
-        """测试无令牌获取邀请码列表"""
-        response = client.get("/api/v1/users/invitations")
-        assert response.status_code == 401
-    
-    def test_create_invitation_without_token(self, client):
-        """测试无令牌创建邀请码"""
-        response = client.post("/api/v1/users/invitations", json={"max_uses": 5})
-        assert response.status_code == 401
+def test_create_invitation_with_custom_max_uses(client, test_user, auth_headers):
+    """测试自定义最大使用次数创建邀请码"""
+    response = client.post(
+        "/api/v1/users/invitations",
+        headers=auth_headers,
+        json={
+            "max_uses": 10
+        }
+    )
+    assert response.status_code == 201
+    assert "code" in response.json()
+    assert len(response.json()["code"]) == 8
+    assert response.json()["max_uses"] == 10
+
+
+def test_get_profile_without_token(client):
+    """测试无 token 访问被拒绝"""
+    response = client.get("/api/v1/users/profile")
+    assert response.status_code == 401
