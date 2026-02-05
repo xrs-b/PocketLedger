@@ -1,9 +1,21 @@
 <template>
-  <div id="app" class="min-h-screen bg-gray-100">
+  <el-config-provider :locale="locale">
     <router-view />
-  </div>
+  </el-config-provider>
 </template>
 
 <script setup>
-// App root component
+import { ref } from 'vue'
+import zhCn from 'element-plus/dist/locale/zh-cn.mjs'
+
+const locale = ref(zhCn)
 </script>
+
+<style>
+@import 'element-plus/dist/index.css'
+
+html, body, #app {
+  height: 100%;
+  margin: 0;
+}
+</style>
