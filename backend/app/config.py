@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     API_V1_PREFIX: str = "/api/v1"
     
     # Database (从环境变量读取)
+    MYSQL_HOST: str = "db"  # Docker 内用 'db'，本地可用 'localhost'
+    MYSQL_PORT: int = 3306
     MYSQL_ROOT_PASSWORD: str = "rootpassword"
     MYSQL_USER: str = "pocketledger"
     MYSQL_PASSWORD: str = "password"
@@ -15,7 +17,7 @@ class Settings(BaseSettings):
     
     @property
     def DATABASE_URL(self) -> str:
-        return f"mysql+pymysql://{self.MYSQL_USER}:{self.MYSQL_PASSWORD}@db:3306/{self.MYSQL_DATABASE}"
+        return f"mysql+pymysql://{self.MYSQL_USER}:{self.MYSQL_PASSWORD}@{self.MYSQL_HOST}:{self.MYSQL_PORT}/{self.MYSQL_DATABASE}"
     
     # JWT
     SECRET_KEY: str = "your-secret-key-change-in-production"

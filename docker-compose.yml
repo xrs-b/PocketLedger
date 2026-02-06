@@ -22,11 +22,16 @@ services:
 
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: pocketledger-backend
     environment:
-      - DATABASE_URL=mysql+pymysql://${MYSQL_USER:-pocketledger}:${MYSQL_PASSWORD:-password}@db:3306/${MYSQL_DATABASE:-pocketledger}
+      - MYSQL_HOST=db
+      - MYSQL_PORT=3306
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-rootpassword}
+      - MYSQL_USER=${MYSQL_USER:-pocketledger}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-password}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-pocketledger}
       - SECRET_KEY=${SECRET_KEY:-your-secret-key-change-in-production}
       - ACCESS_TOKEN_EXPIRE_MINUTES=10080
     ports:
@@ -38,8 +43,8 @@ services:
 
   frontend:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: frontend/Dockerfile
     container_name: pocketledger-frontend
     ports:
       - "80:80"

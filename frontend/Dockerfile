@@ -3,26 +3,26 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files first for better caching
-COPY package*.json ./
+# Copy package files
+COPY frontend/package*.json ./
 
-# Install dependencies with verbose output
-RUN npm ci --verbose
+# Install dependencies
+RUN npm ci
 
 # Copy source code
-COPY . .
+COPY frontend/ .
 
-# Build with verbose output
+# Build the application
 RUN npm run build
 
 # Production stage with Nginx
 FROM nginx:alpine
 
 # Copy built assets
-COPY --from=builder /app/dist /usr/share/nginx/html
+COPY --from=builder /app/frontend/dist /usr/share/nginx/html
 
 # Copy nginx configuration
-COPY --from=builder /app/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=builder /app/frontend/nginx.conf /etc/nginx/conf.d/default.conf
 
 # Expose port
 EXPOSE 80
