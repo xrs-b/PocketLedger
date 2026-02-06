@@ -19,6 +19,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - pocketledger_network
 
   backend:
     build:
@@ -40,6 +42,8 @@ services:
       db:
         condition: service_healthy
     restart: unless-stopped
+    networks:
+      - pocketledger_network
 
   frontend:
     build:
@@ -51,6 +55,12 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
+    networks:
+      - pocketledger_network
+
+networks:
+  pocketledger_network:
+    driver: bridge
 
 volumes:
   mysql_data:
