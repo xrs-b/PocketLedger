@@ -1,6 +1,7 @@
 # Backend Dockerfile
 FROM python:3.12-slim
 
+# 设置工作目录
 WORKDIR /code/backend
 
 # Install system dependencies
@@ -14,8 +15,8 @@ COPY backend/requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code (entire project, but we only use backend/)
-COPY . .
+# Copy application code (从上下文根目录复制 backend 目录内容到 /code/backend)
+COPY backend/ /code/backend/
 
 # Expose port
 EXPOSE 8000
