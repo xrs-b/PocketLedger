@@ -9,8 +9,8 @@ COPY package*.json ./
 # Install dependencies
 RUN npm ci
 
-# Copy source code
-COPY frontend/ .
+# Copy source code (context is frontend/, so just copy .)
+COPY . .
 
 # Build the application
 RUN npm run build
