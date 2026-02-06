@@ -43,11 +43,6 @@ async def startup_event():
     init_db()
 
 
-@app.on_event("startup")
-async def startup_event():
-    init_db()
-
-
 @app.get("/")
 def read_root():
     return {"message": "PocketLedger API", "status": "healthy"}
