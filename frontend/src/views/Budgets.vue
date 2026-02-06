@@ -272,38 +272,40 @@ function handleEdit(budget) {
 }
 
 async function handleSubmit() {
-  try await formRef.value.validate()
-  
-  submitLoading.value = true
-  const data = {
-    name: formData.name,
-    amount: formData.amount,
-    period_type: formData.period_type,
-    category_id: formData.category_id
+  try {
+    await formRef.value.validate()
+    
+    submitLoading.value = true
+    const data = {
+      name: formData.name,
+      amount: formData.amount,
+      period_type: formData.period_type,
+      category_id: formData.category_id
+    }
+    
+    if (formData.period_type === 'custom' && formData.dateRange?.length === 2) {
+      data.start_date = formData.dateRange[0]
+      data.end_date = formData.dateRange[1]
+    }
+    
+    if (isEdit.value) {
+      await budgetApi.update(editingId.value, data)
+      ElMessage.success('更新成功')
+    } else {
+      await budgetApi.create(data)
+      ElMessage.success('创建成功')
+    }
+    
+    dialogVisible.value = false
+    fetchBudgets()
+    fetchAlerts()
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElMessage.error('操作失败')
+    }
+  } finally {
+    submitLoading.value = false
   }
-  
-  if (formData.period_type === 'custom' && formData.dateRange?.length === 2) {
-    data.start_date = formData.dateRange[0]
-    data.end_date = formData.dateRange[1]
-  }
-  
-  if (isEdit.value) {
-    await budgetApi.update(editingId.value, data)
-    ElMessage.success('更新成功')
-  } else {
-    await budgetApi.create(data)
-    ElMessage.success('创建成功')
-  }
-  
-  dialogVisible.value = false
-  fetchBudgets()
-  fetchAlerts()
-} catch (error) {
-  if (error !== 'cancel') {
-    ElMessage.error('操作失败')
-  }
-} finally {
-  submitLoading.value = false
 }
 
 async function handleDelete(budget) {
