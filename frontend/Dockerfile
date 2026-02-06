@@ -3,22 +3,22 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files
+# Copy package files first for better caching
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci
+# Install dependencies with verbose output
+RUN npm ci --verbose
 
-# Copy source code (context is frontend/, so just copy .)
+# Copy source code
 COPY . .
 
-# Build the application
+# Build with verbose output
 RUN npm run build
 
 # Production stage with Nginx
 FROM nginx:alpine
 
-# Copy built assets (from builder stage /app/dist)
+# Copy built assets
 COPY --from=builder /app/dist /usr/share/nginx/html
 
 # Copy nginx configuration
