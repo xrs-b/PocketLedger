@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from datetime import timedelta
+from pydantic import BaseModel, EmailStr
 
 from app.config import settings
 from app.database import get_db
@@ -11,6 +11,12 @@ from app.auth.jwt import create_access_token, get_current_user
 from app.auth.password import verify_password
 from app.schemas.auth import Token, LoginRequest, RegisterRequest, MessageResponse
 from app.schemas.user import UserCreate, UserResponse
+
+
+class LoginForm(BaseModel):
+    """JSON 登录请求格式 - 替代 OAuth2PasswordRequestForm"""
+    email: EmailStr
+    password: str
 
 router = APIRouter(prefix="/auth", tags=["认证"])
 
@@ -80,16 +86,17 @@ async def register(request: RegisterRequest, db: Session = Depends(get_db)):
 
 @router.post("/login", response_model=Token)
 async def login(
-    form_data: OAuth2PasswordRequestForm = Depends(),
+    request: LoginForm,  # ← 使用 JSON 格式
     db: Session = Depends(get_db)
 ):
-    """用户登录"""
-    user = db.query(User).filter(User.username == form_data.username).first()
+    """用户登录 (JSON 格式)"""
+    # 通过 email 查找用户
+    user = db.query(User).filter(User.email == request.email).first()
     
-    if not user or not verify_password(form_data.password, user.hashed_password):
+    if not user or not verify_password(request.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="用户名或密码错误",
+            detail="邮箱或密码错误",
             headers={"WWW-Authenticate": "Bearer"},
         )
     

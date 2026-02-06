@@ -1,15 +1,12 @@
 import client from './client'
 
 export const auth = {
-  async login(username, password) {
-    const formData = new URLSearchParams()
-    formData.append('username', username)
-    formData.append('password', password)
-    
-    const response = await client.post('/auth/login', formData, {
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+  async login(email, password) {
+    // 发送 JSON 格式
+    return await client.post('/auth/login', {
+      email: email,
+      password: password
     })
-    return response
   },
 
   async register(data) {
