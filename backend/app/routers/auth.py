@@ -132,15 +132,20 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
     return current_user
 
 
+class RefreshTokenRequest(BaseModel):
+    """JSON 刷新令牌请求格式"""
+    refresh_token: str
+
+
 @router.post("/refresh", response_model=Token)
 async def refresh_token(
-    token: str = Depends(OAuth2PasswordRequestForm),
+    request: RefreshTokenRequest,  # ← 使用 JSON 格式
     db: Session = Depends(get_db)
 ):
-    """刷新访问令牌"""
+    """刷新访问令牌 (JSON 格式)"""
     from app.auth.jwt import decode_token
     
-    payload = decode_token(token)
+    payload = decode_token(request.refresh_token)
     user_id: int = payload.get("sub")
     
     if user_id is None:
