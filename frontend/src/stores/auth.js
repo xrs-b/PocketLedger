@@ -13,8 +13,8 @@ export const useAuthStore = defineStore('auth', () => {
   const isAuthenticated = computed(() => !!token.value)
   
   // Actions
-  async function login(username, password) {
-    const response = await auth.login(username, password)
+  async function login(email, password) {
+    const response = await auth.login(email, password)
     token.value = response.access_token
     localStorage.setItem('token', response.access_token)
     await fetchProfile()
